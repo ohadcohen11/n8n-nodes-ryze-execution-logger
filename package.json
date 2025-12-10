@@ -1,6 +1,6 @@
 {
 	"name": "n8n-nodes-ryze-scraper-logger",
-	"version": "0.1.0",
+	"version": "0.1.1",
 	"description": "n8n node for logging Ryze scraper execution metrics to MySQL database",
 	"license": "MIT",
 	"homepage": "",
