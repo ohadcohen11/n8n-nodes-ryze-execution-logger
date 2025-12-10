@@ -31,6 +31,7 @@ interface ISummary {
 
 interface IExecution {
 	mode?: string;
+	script_id?: string;
 }
 
 export class RyzeScraperLogger implements INodeType {
@@ -71,15 +72,6 @@ export class RyzeScraperLogger implements INodeType {
 				default: 'n8n_scraper_logs',
 				description: 'Table name for storing execution logs',
 				placeholder: 'n8n_scraper_logs',
-			},
-			{
-				displayName: 'Script ID',
-				name: 'scriptId',
-				type: 'number',
-				required: true,
-				default: '',
-				description: 'Scraper script ID',
-				placeholder: '3001',
 			},
 			{
 				displayName: 'Execution Mode',
@@ -123,7 +115,6 @@ export class RyzeScraperLogger implements INodeType {
 		const items = this.getInputData();
 
 		// Get parameters
-		const scriptId = this.getNodeParameter('scriptId', 0) as number;
 		const database = this.getNodeParameter('database', 0) as string;
 		const table = this.getNodeParameter('table', 0) as string;
 		const executionMode = this.getNodeParameter('executionMode', 0) as string;
@@ -141,6 +132,7 @@ export class RyzeScraperLogger implements INodeType {
 		const mergedEventSummary: Record<string, number> = {};
 		let hasFailures = false;
 		let firstExecution: IExecution | null = null;
+		let scriptId: number | null = null;
 
 		// Loop through all items and aggregate
 		for (let i = 0; i < items.length; i++) {
@@ -149,9 +141,11 @@ export class RyzeScraperLogger implements INodeType {
 			const execution = (input.execution || {}) as IExecution;
 			const details = (input.details || {}) as any;
 
-			// Store first execution for mode detection
+			// Store first execution for mode detection and script_id extraction
 			if (i === 0) {
 				firstExecution = execution;
+				// Extract script_id from execution data
+				scriptId = execution.script_id ? parseInt(execution.script_id, 10) : null;
 			}
 
 			// Aggregate metrics
@@ -180,6 +174,14 @@ export class RyzeScraperLogger implements INodeType {
 		const results: INodeExecutionData[] = [];
 
 		try {
+			// Validate script_id was found
+			if (!scriptId) {
+				throw new NodeOperationError(
+					this.getNode(),
+					'Could not extract script_id from input data. Make sure this node receives data from Ryze Pixel Sender.',
+				);
+			}
+
 			// Determine execution mode
 			let mode = executionMode;
 			if (mode === 'auto' && firstExecution) {
