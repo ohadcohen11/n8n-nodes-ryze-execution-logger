@@ -132,91 +132,121 @@ export class RyzeScraperLogger implements INodeType {
 			verboseLogging?: boolean;
 		};
 
-		const results: INodeExecutionData[] = [];
+		// Aggregate all items into one log entry
+		let totalItemsProcessed = 0;
+		let totalPixelNew = 0;
+		let totalPixelDuplicates = 0;
+		let totalPixelUpdated = 0;
+		let allTransactionItems: any[] = [];
+		const mergedEventSummary: Record<string, number> = {};
+		let hasFailures = false;
+		let firstExecution: IExecution | null = null;
 
+		// Loop through all items and aggregate
 		for (let i = 0; i < items.length; i++) {
 			const input = items[i].json;
+			const summary = (input.summary || {}) as ISummary;
+			const execution = (input.execution || {}) as IExecution;
+			const details = (input.details || {}) as any;
 
-			try {
-				// Extract data from Ryze Pixel Sender output
-				const summary = (input.summary || {}) as ISummary;
-				const execution = (input.execution || {}) as IExecution;
-				const details = (input.details || {}) as any;
+			// Store first execution for mode detection
+			if (i === 0) {
+				firstExecution = execution;
+			}
 
-				// Determine execution mode
-				let mode = executionMode;
-				if (mode === 'auto') {
-					mode = execution.mode || 'regular';
+			// Aggregate metrics
+			totalItemsProcessed += summary.total_input || 0;
+			totalPixelNew += summary.new_items || 0;
+			totalPixelDuplicates += summary.exact_duplicates || 0;
+			totalPixelUpdated += summary.updated_items || 0;
+
+			// Check for failures
+			if ((summary.pixel_failed ?? 0) > 0) {
+				hasFailures = true;
+			}
+
+			// Merge event summaries
+			if (summary.event_summary) {
+				for (const [event, count] of Object.entries(summary.event_summary)) {
+					mergedEventSummary[event] = (mergedEventSummary[event] || 0) + count;
 				}
+			}
 
-				// Determine execution type (manual or scheduled)
-				const workflowMode = this.getMode();
-				const executionType = workflowMode === 'manual' ? 'manual' : 'scheduled';
+			// Collect transaction items
+			const sentItems = details.sent_items?.items || [];
+			allTransactionItems = allTransactionItems.concat(sentItems);
+		}
 
-				// Get workflow name
-				const workflow = this.getWorkflow();
-				const workflowName = workflow.name || 'Unknown';
+		const results: INodeExecutionData[] = [];
 
-				// Determine status
-				const status = (summary.pixel_failed ?? 0) > 0 ? 'failed' : 'success';
+		try {
+			// Determine execution mode
+			let mode = executionMode;
+			if (mode === 'auto' && firstExecution) {
+				mode = firstExecution.mode || 'regular';
+			}
 
-				// Extract only the transaction items array
-				const sentItems = details.sent_items?.items || [];
+			// Determine execution type (manual or scheduled)
+			const workflowMode = this.getMode();
+			const executionType = workflowMode === 'manual' ? 'manual' : 'scheduled';
 
-				// Prepare log data
-				const logData: ILogData = {
-					script_id: scriptId,
-					execution_mode: mode,
-					execution_type: executionType,
-					workflow_name: workflowName,
-					status: status,
-					items_processed: summary.total_input || 0,
-					pixel_new: summary.new_items || 0,
-					pixel_duplicates: summary.exact_duplicates || 0,
-					pixel_updated: summary.updated_items || 0,
-					event_summary: JSON.stringify(summary.event_summary || {}),
-					full_details: JSON.stringify(sentItems),
-				};
+			// Get workflow name
+			const workflow = this.getWorkflow();
+			const workflowName = workflow.name || 'Unknown';
 
-				if (options.verboseLogging) {
-					this.logger.info('Ryze Scraper Logger - Logging data', { logData: JSON.stringify(logData) });
-				}
+			// Determine status
+			const status = hasFailures ? 'failed' : 'success';
 
-				// Insert to MySQL
-				await insertLog(this, database, table, logData);
+			// Prepare aggregated log data
+			const logData: ILogData = {
+				script_id: scriptId,
+				execution_mode: mode,
+				execution_type: executionType,
+				workflow_name: workflowName,
+				status: status,
+				items_processed: totalItemsProcessed,
+				pixel_new: totalPixelNew,
+				pixel_duplicates: totalPixelDuplicates,
+				pixel_updated: totalPixelUpdated,
+				event_summary: JSON.stringify(mergedEventSummary),
+				full_details: JSON.stringify(allTransactionItems),
+			};
 
-				// Return success
-				results.push({
-					json: {
-						success: true,
-						logged_at: new Date().toISOString(),
-						script_id: scriptId,
-						log_data: logData,
-					},
-					pairedItem: i,
-				});
-			} catch (error) {
-				if (options.failOnError) {
-					throw new NodeOperationError(
-						this.getNode(),
-						`Failed to log execution: ${error.message}`,
-						{
-							itemIndex: i,
-						},
-					);
-				}
-
-				this.logger.error('Ryze Scraper Logger - Error:', error);
-
-				results.push({
-					json: {
-						success: false,
-						error: error.message,
-						script_id: scriptId,
-					},
-					pairedItem: i,
+			if (options.verboseLogging) {
+				this.logger.info('Ryze Scraper Logger - Logging aggregated data', {
+					logData: JSON.stringify(logData),
 				});
 			}
+
+			// Insert single aggregated log to MySQL
+			await insertLog(this, database, table, logData);
+
+			// Return success
+			results.push({
+				json: {
+					success: true,
+					logged_at: new Date().toISOString(),
+					script_id: scriptId,
+					batches_aggregated: items.length,
+					log_data: logData,
+				},
+				pairedItem: 0,
+			});
+		} catch (error) {
+			if (options.failOnError) {
+				throw new NodeOperationError(this.getNode(), `Failed to log execution: ${error.message}`);
+			}
+
+			this.logger.error('Ryze Scraper Logger - Error:', error);
+
+			results.push({
+				json: {
+					success: false,
+					error: error.message,
+					script_id: scriptId,
+				},
+				pairedItem: 0,
+			});
 		}
 
 		return [results];
