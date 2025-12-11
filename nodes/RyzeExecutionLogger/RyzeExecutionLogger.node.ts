@@ -123,58 +123,21 @@ export class RyzeExecutionLogger implements INodeType {
 			verboseLogging?: boolean;
 		};
 
-		// Aggregate all items into one log entry
-		let totalItemsProcessed = 0;
-		let totalPixelNew = 0;
-		let totalPixelDuplicates = 0;
-		let totalPixelUpdated = 0;
-		let allTransactionItems: any[] = [];
-		const mergedEventSummary: Record<string, number> = {};
-		let hasFailures = false;
-		let firstExecution: IExecution | null = null;
-		let scriptId: number | null = null;
-
-		// Loop through all items and aggregate
-		for (let i = 0; i < items.length; i++) {
-			const input = items[i].json;
-			const summary = (input.summary || {}) as ISummary;
-			const execution = (input.execution || {}) as IExecution;
-			const details = (input.details || {}) as any;
-
-			// Store first execution for mode detection and script_id extraction
-			if (i === 0) {
-				firstExecution = execution;
-				// Extract script_id from execution data
-				scriptId = execution.script_id ? parseInt(execution.script_id, 10) : null;
-			}
-
-			// Aggregate metrics
-			totalItemsProcessed += summary.total_input || 0;
-			totalPixelNew += summary.new_items || 0;
-			totalPixelDuplicates += summary.exact_duplicates || 0;
-			totalPixelUpdated += summary.updated_items || 0;
-
-			// Check for failures
-			if ((summary.pixel_failed ?? 0) > 0) {
-				hasFailures = true;
-			}
-
-			// Merge event summaries
-			if (summary.event_summary) {
-				for (const [event, count] of Object.entries(summary.event_summary)) {
-					mergedEventSummary[event] = (mergedEventSummary[event] || 0) + count;
-				}
-			}
-
-			// Collect transaction items
-			const sentItems = details.sent_items?.items || [];
-			allTransactionItems = allTransactionItems.concat(sentItems);
+		// Get the first (and typically only) item
+		const input = items[0]?.json;
+		if (!input) {
+			throw new NodeOperationError(this.getNode(), 'No input data received');
 		}
+
+		const summary = (input.summary || {}) as ISummary;
+		const execution = (input.execution || {}) as IExecution;
+		const details = (input.details || {}) as any;
 
 		const results: INodeExecutionData[] = [];
 
 		try {
-			// Validate script_id was found
+			// Extract and validate script_id
+			const scriptId = execution.script_id ? parseInt(execution.script_id, 10) : null;
 			if (!scriptId) {
 				throw new NodeOperationError(
 					this.getNode(),
@@ -184,8 +147,8 @@ export class RyzeExecutionLogger implements INodeType {
 
 			// Determine execution mode
 			let mode = executionMode;
-			if (mode === 'auto' && firstExecution) {
-				mode = firstExecution.mode || 'regular';
+			if (mode === 'auto') {
+				mode = execution.mode || 'regular';
 			}
 
 			// Determine execution type (manual or scheduled)
@@ -197,30 +160,31 @@ export class RyzeExecutionLogger implements INodeType {
 			const workflowName = workflow.name || 'Unknown';
 
 			// Determine status
+			const hasFailures = (summary.pixel_failed ?? 0) > 0;
 			const status = hasFailures ? 'failed' : 'success';
 
-			// Prepare aggregated log data
+			// Prepare log data
 			const logData: ILogData = {
 				script_id: scriptId,
 				execution_mode: mode,
 				execution_type: executionType,
 				workflow_name: workflowName,
 				status: status,
-				items_processed: totalItemsProcessed,
-				pixel_new: totalPixelNew,
-				pixel_duplicates: totalPixelDuplicates,
-				pixel_updated: totalPixelUpdated,
-				event_summary: JSON.stringify(mergedEventSummary),
-				full_details: JSON.stringify(allTransactionItems),
+				items_processed: summary.total_input || 0,
+				pixel_new: summary.new_items || 0,
+				pixel_duplicates: summary.exact_duplicates || 0,
+				pixel_updated: summary.updated_items || 0,
+				event_summary: JSON.stringify(summary.event_summary || {}),
+				full_details: JSON.stringify(details.sent_items?.items || []),
 			};
 
 			if (options.verboseLogging) {
-				this.logger.info('Ryze Execution Logger - Logging aggregated data', {
+				this.logger.info('Ryze Execution Logger - Logging data', {
 					logData: JSON.stringify(logData),
 				});
 			}
 
-			// Insert single aggregated log to MySQL
+			// Insert log to MySQL
 			await insertLog(this, database, table, logData);
 
 			// Return success
@@ -229,7 +193,6 @@ export class RyzeExecutionLogger implements INodeType {
 					success: true,
 					logged_at: new Date().toISOString(),
 					script_id: scriptId,
-					batches_aggregated: items.length,
 					log_data: logData,
 				},
 				pairedItem: 0,
@@ -245,7 +208,6 @@ export class RyzeExecutionLogger implements INodeType {
 				json: {
 					success: false,
 					error: error.message,
-					script_id: scriptId,
 				},
 				pairedItem: 0,
 			});
