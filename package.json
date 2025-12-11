@@ -1,7 +1,7 @@
 {
-	"name": "n8n-nodes-ryze-scraper-logger",
-	"version": "0.1.3",
-	"description": "n8n node for logging Ryze scraper execution metrics to MySQL database",
+	"name": "n8n-nodes-ryze-execution-logger",
+	"version": "0.1.0",
+	"description": "n8n node for logging Ryze workflow execution metrics to MySQL database",
 	"license": "MIT",
 	"homepage": "",
 	"keywords": [
@@ -18,7 +18,7 @@
 	},
 	"repository": {
 		"type": "git",
-		"url": "https://github.com/ohadcohen11/n8n-nodes-ryze-scraper-logger.git"
+		"url": "https://github.com/ohadcohen11/n8n-nodes-ryze-execution-logger.git"
 	},
 	"engines": {
 		"node": ">=20.15"
