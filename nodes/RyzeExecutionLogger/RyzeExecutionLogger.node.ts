@@ -34,16 +34,16 @@ interface IExecution {
 	script_id?: string;
 }
 
-export class RyzeScraperLogger implements INodeType {
+export class RyzeExecutionLogger implements INodeType {
 	description: INodeTypeDescription = {
-		displayName: 'Ryze Scraper Logger',
-		name: 'ryzeScraperLogger',
-		icon: { light: 'file:ryzeScraperLogger.svg', dark: 'file:ryzeScraperLogger.dark.svg' },
+		displayName: 'Ryze Execution Logger',
+		name: 'ryzeExecutionLogger',
+		icon: { light: 'file:ryzeExecutionLogger.svg', dark: 'file:ryzeExecutionLogger.dark.svg' },
 		group: ['transform'],
 		version: 1,
 		description: 'Log scraper execution metrics to MySQL',
 		defaults: {
-			name: 'Ryze Scraper Logger',
+			name: 'Ryze Execution Logger',
 		},
 		inputs: [NodeConnectionTypes.Main],
 		outputs: [NodeConnectionTypes.Main],
@@ -215,7 +215,7 @@ export class RyzeScraperLogger implements INodeType {
 			};
 
 			if (options.verboseLogging) {
-				this.logger.info('Ryze Scraper Logger - Logging aggregated data', {
+				this.logger.info('Ryze Execution Logger - Logging aggregated data', {
 					logData: JSON.stringify(logData),
 				});
 			}
@@ -239,7 +239,7 @@ export class RyzeScraperLogger implements INodeType {
 				throw new NodeOperationError(this.getNode(), `Failed to log execution: ${error.message}`);
 			}
 
-			this.logger.error('Ryze Scraper Logger - Error:', error);
+			this.logger.error('Ryze Execution Logger - Error:', error);
 
 			results.push({
 				json: {

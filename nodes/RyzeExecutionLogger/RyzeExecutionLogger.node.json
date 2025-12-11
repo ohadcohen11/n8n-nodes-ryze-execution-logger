@@ -1,5 +1,5 @@
 {
-	"node": "n8n-nodes-ryze-scraper-logger",
+	"node": "n8n-nodes-ryze-execution-logger",
 	"nodeVersion": "1.0",
 	"codexVersion": "1.0",
 	"categories": ["Data & Storage", "Ryze Automation"],

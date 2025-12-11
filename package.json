@@ -45,7 +45,7 @@
 		"nodes": [
 			"dist/nodes/GithubIssues/GithubIssues.node.js",
 			"dist/nodes/Example/Example.node.js",
-			"dist/nodes/RyzeScraperLogger/RyzeScraperLogger.node.js"
+			"dist/nodes/RyzeExecutionLogger/RyzeExecutionLogger.node.js"
 		]
 	},
 	"dependencies": {
